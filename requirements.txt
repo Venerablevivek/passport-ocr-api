@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+pytesseract
+passporteye
+opencv-python
+face_recognition
+numpy
+pillow
+scikit-image
