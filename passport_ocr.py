@@ -3,10 +3,13 @@ from datetime import datetime, date
 import cv2
 import os
 import tempfile
-import numpy as np
+
+
+MIN_VALID_SCORE = 70
 
 
 def preprocess_variants(image):
+
     variants = []
 
     gray = cv2.cvtColor(
@@ -62,48 +65,78 @@ def try_mrz(image):
         image
     )
 
+    scales = [1, 2, 3]
+
     best = None
     best_score = -1
 
     for img in variants:
 
-        temp = tempfile.mktemp(
-            suffix=".jpg"
-        )
+        for scale in scales:
 
-        cv2.imwrite(
-            temp,
-            img
-        )
+            try:
 
-        try:
+                if scale > 1:
 
-            mrz = read_mrz(
-                temp,
-                save_roi=True
-            )
+                    processed = cv2.resize(
+                        img,
+                        None,
+                        fx=scale,
+                        fy=scale,
+                        interpolation=cv2.INTER_CUBIC
+                    )
 
-            if mrz:
+                else:
 
-                score = mrz.to_dict().get(
-                    "valid_score",
-                    0
+                    processed = img
+
+                temp = tempfile.mktemp(
+                    suffix=".jpg"
                 )
 
-                if score > best_score:
+                cv2.imwrite(
+                    temp,
+                    processed
+                )
 
-                    best_score = score
-                    best = mrz
+                mrz = read_mrz(
+                    temp,
+                    save_roi=True
+                )
 
-        except:
+                if mrz:
 
-            pass
+                    data = mrz.to_dict()
 
-        finally:
+                    score = data.get(
+                        "valid_score",
+                        0
+                    )
 
-            if os.path.exists(temp):
+                    print(
+                        f"Scale={scale} Score={score}"
+                    )
 
-                os.remove(temp)
+                    if score > best_score:
+
+                        best_score = score
+                        best = mrz
+
+            except Exception as e:
+
+                print(
+                    "MRZ attempt failed:",
+                    e
+                )
+
+            finally:
+
+                if (
+                    "temp" in locals()
+                    and os.path.exists(temp)
+                ):
+
+                    os.remove(temp)
 
     return best
 
@@ -309,6 +342,10 @@ def ocr_passport(path):
                 0
             )
 
+            print(
+                f"Rotation={angle} Score={score}"
+            )
+
             if score > best_score:
 
                 best_score = score
@@ -318,6 +355,19 @@ def ocr_passport(path):
 
         raise Exception(
             "Passport MRZ not detected"
+        )
+
+    data = best.to_dict()
+
+    if (
+        best_score < MIN_VALID_SCORE
+        or not data.get(
+            "valid_date_of_birth"
+        )
+    ):
+
+        raise Exception(
+            "Low confidence passport extraction. Please upload a clearer image."
         )
 
     return extract_fields(
