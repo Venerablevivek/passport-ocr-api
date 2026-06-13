@@ -98,11 +98,12 @@ def try_mrz(image):
                     temp,
                     processed
                 )
-
+                print("Trying MRZ...")
                 mrz = read_mrz(
                     temp,
                     save_roi=True
                 )
+                print("MRZ:", mrz)
 
                 if mrz:
 

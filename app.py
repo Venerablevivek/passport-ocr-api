@@ -6,6 +6,12 @@ from fastapi import (
 
 import shutil
 import os
+import pytesseract
+
+print(
+    "TESSERACT:",
+    pytesseract.get_tesseract_version()
+)
 
 from passport_ocr import (
     ocr_passport

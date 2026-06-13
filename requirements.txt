@@ -3,8 +3,7 @@ uvicorn
 python-multipart
 pytesseract
 passporteye
-opencv-python
-face_recognition
+opencv-python-headless
 numpy
 pillow
 scikit-image
