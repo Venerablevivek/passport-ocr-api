@@ -34,7 +34,9 @@ os.makedirs(
 def home():
 
     return {
+
         "success": True,
+
         "message":
             "Passport OCR API Running"
     }

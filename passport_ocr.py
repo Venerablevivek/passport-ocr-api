@@ -4,142 +4,7 @@ import cv2
 import os
 import tempfile
 
-
 MIN_VALID_SCORE = 70
-
-
-def preprocess_variants(image):
-
-    variants = []
-
-    gray = cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2GRAY
-    )
-
-    variants.append(gray)
-
-    blurred = cv2.GaussianBlur(
-        gray,
-        (3, 3),
-        0
-    )
-
-    sharpened = cv2.addWeighted(
-        gray,
-        2,
-        blurred,
-        -1,
-        0
-    )
-
-    variants.append(sharpened)
-
-    adaptive = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31,
-        2
-    )
-
-    variants.append(adaptive)
-
-    otsu = cv2.threshold(
-        gray,
-        0,
-        255,
-        cv2.THRESH_BINARY +
-        cv2.THRESH_OTSU
-    )[1]
-
-    variants.append(otsu)
-
-    return variants
-
-
-def try_mrz(image):
-
-    variants = preprocess_variants(
-        image
-    )
-
-    scales = [1, 2, 3]
-
-    best = None
-    best_score = -1
-
-    for img in variants:
-
-        for scale in scales:
-
-            try:
-
-                if scale > 1:
-
-                    processed = cv2.resize(
-                        img,
-                        None,
-                        fx=scale,
-                        fy=scale,
-                        interpolation=cv2.INTER_CUBIC
-                    )
-
-                else:
-
-                    processed = img
-
-                temp = tempfile.mktemp(
-                    suffix=".jpg"
-                )
-
-                cv2.imwrite(
-                    temp,
-                    processed
-                )
-                print("Trying MRZ...")
-                mrz = read_mrz(
-                    temp,
-                    save_roi=True
-                )
-                print("MRZ:", mrz)
-
-                if mrz:
-
-                    data = mrz.to_dict()
-
-                    score = data.get(
-                        "valid_score",
-                        0
-                    )
-
-                    print(
-                        f"Scale={scale} Score={score}"
-                    )
-
-                    if score > best_score:
-
-                        best_score = score
-                        best = mrz
-
-            except Exception as e:
-
-                print(
-                    "MRZ attempt failed:",
-                    e
-                )
-
-            finally:
-
-                if (
-                    "temp" in locals()
-                    and os.path.exists(temp)
-                ):
-
-                    os.remove(temp)
-
-    return best
 
 
 def clean_name(value):
@@ -287,6 +152,34 @@ def extract_fields(mrz):
     }
 
 
+def try_read(path):
+
+    try:
+
+        mrz = read_mrz(path)
+
+        if mrz:
+
+            print(
+                "MRZ Score:",
+                mrz.to_dict().get(
+                    "valid_score",
+                    0
+                )
+            )
+
+        return mrz
+
+    except Exception as e:
+
+        print(
+            "MRZ failed:",
+            e
+        )
+
+        return None
+
+
 def ocr_passport(path):
 
     image = cv2.imread(path)
@@ -297,73 +190,74 @@ def ocr_passport(path):
             "Unable to read image"
         )
 
-    angles = [
-        0,
-        90,
-        180,
-        270
-    ]
+    """
+    ATTEMPT 1
+    Original Image
+    """
 
-    best = None
-    best_score = -1
+    mrz = try_read(path)
 
-    for angle in angles:
+    """
+    ATTEMPT 2
+    Sharpened Image
+    """
 
-        rotated = image.copy()
+    if mrz is None:
 
-        if angle == 90:
-
-            rotated = cv2.rotate(
-                image,
-                cv2.ROTATE_90_CLOCKWISE
-            )
-
-        elif angle == 180:
-
-            rotated = cv2.rotate(
-                image,
-                cv2.ROTATE_180
-            )
-
-        elif angle == 270:
-
-            rotated = cv2.rotate(
-                image,
-                cv2.ROTATE_90_COUNTERCLOCKWISE
-            )
-
-        mrz = try_mrz(
-            rotated
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2GRAY
         )
 
-        if mrz:
+        blurred = cv2.GaussianBlur(
+            gray,
+            (3, 3),
+            0
+        )
 
-            score = mrz.to_dict().get(
-                "valid_score",
-                0
-            )
+        sharpened = cv2.addWeighted(
+            gray,
+            2,
+            blurred,
+            -1,
+            0
+        )
 
-            print(
-                f"Rotation={angle} Score={score}"
-            )
+        temp = tempfile.mktemp(
+            suffix=".jpg"
+        )
 
-            if score > best_score:
+        cv2.imwrite(
+            temp,
+            sharpened
+        )
 
-                best_score = score
-                best = mrz
+        mrz = try_read(temp)
 
-    if best is None:
+        os.remove(temp)
+
+    """
+    FINAL VALIDATION
+    """
+
+    if mrz is None:
 
         raise Exception(
-            "Passport MRZ not detected"
+            "Passport MRZ not detected. Please upload a clearer passport image."
         )
 
-    data = best.to_dict()
+    data = mrz.to_dict()
+
+    score = data.get(
+        "valid_score",
+        0
+    )
 
     if (
-        best_score < MIN_VALID_SCORE
+        score < MIN_VALID_SCORE
         or not data.get(
-            "valid_date_of_birth"
+            "valid_date_of_birth",
+            False
         )
     ):
 
@@ -372,5 +266,5 @@ def ocr_passport(path):
         )
 
     return extract_fields(
-        best
+        mrz
     )
